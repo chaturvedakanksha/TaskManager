@@ -19,12 +19,17 @@ namespace TaskManager.Repos.Repository
 
             return await _context.Tickets.Include(t => t.Notes).Include(t => t.Documents).ToListAsync();
         }
+        public async Task<Role> GetEmployeeRoleAsync(int empId)
+        {
+            var employee = await _context.Employees.FirstOrDefaultAsync(e => e.Id == empId);
+            return employee.Role;
+        }
         public async Task<IEnumerable<Ticket>> GetByEmpIdAsync(int empId)
         {
 
             return await _context.Tickets.Where(t => t.EmployeeId == empId && t.Employee.Role == Role.Employee).ToListAsync();
         }
-        public async Task<IEnumerable<Ticket>> GetByTeamIdAsync(int teamId)
+        public async Task<IEnumerable<Ticket>> GetByTeamIdAsync(int empId, int teamId)
         {
             return await _context.Tickets
             .Include(t => t.Notes)
@@ -33,7 +38,7 @@ namespace TaskManager.Repos.Repository
             .Where(t => t.Employee.TeamId == teamId)
             .ToListAsync();
         }
-        public async Task<List<Ticket>> GetTasksByDateRangeAsync(DateTime startDate, DateTime endDate)
+        public async Task<List<Ticket>> GetTasksByDateRangeAsync(int empId,DateTime startDate, DateTime endDate)
         {
             return await _context.Tickets
                 .Include(t => t.Notes)

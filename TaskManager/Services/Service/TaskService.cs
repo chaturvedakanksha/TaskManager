@@ -25,10 +25,20 @@ namespace TaskManager.Services.Service
         }
         public async Task<IEnumerable<Ticket>> GetTaskByTeamIdAsync(int empId, int teamId)
         {
+            Role role = await _taskRepository.GetEmployeeRoleAsync(empId);
+            if (role != Role.Manager)
+            {
+                return null;
+            }
             return await _taskRepository.GetByTeamIdAsync(empId,teamId);
         }
         public async Task<List<Ticket>> GetTasksReportAsync(int empId, DateTime startDate, DateTime endDate)
         {
+            Role role = await _taskRepository.GetEmployeeRoleAsync(empId);
+            if (role != Role.Admin)
+            {
+                return null;
+            }
             return await _taskRepository.GetTasksByDateRangeAsync(empId,startDate, endDate);
         }
 
