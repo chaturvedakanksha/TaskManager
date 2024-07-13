@@ -1,0 +1,187 @@
+Creating web api
+
+//Filters
+//ORM
+//routing
+//Authentication
+//Authorization
+//Logging
+//swagger
+
+
+public class ExceptionFilter: IExceptionFilter{
+	public void OnException(ExceptionContext context){
+	var errorResponse = new ErrorResponse(){
+		StatusCode = 500,
+		Message = "Internal Server Error"
+	}
+		context.Result = new ObjectResult(errorResponse){
+			StatusCode = errorResponse.StatusCode,
+			DeclaredType = typeof(errorResponse)
+		};
+		context.ExceptionHandled= true;
+	}
+}
+public class ActionFilter: IActionFilter{
+	public void OnActionExecuting(ActionExecutingContext context){
+	}
+	public void OnActionExecuted(ActionExecutedContext context){
+	}
+}
+
+public interface IDBConnection {
+	public IDBConnection CreateConnection();
+}
+
+public class DBContext : IDBConnection {
+	private string _dbConnectionString;
+	public DBContext(string dbConnection){
+		this.dbConnectionString = dbConnection;
+	}
+	public override IDBConnection CreateConnection(){
+		return new SqlConnection(dbConnectionString);
+	}
+}
+
+public class ORM {
+	private IDBContext _sqlConnection;
+	public ORM(IDbContext dbContext){
+		_sqlConnection = dbContext.CreateConnection();
+	}
+	public Task<IEnumerable<T>> ExecuteStoredProcedureAsync<T>(string procName, DynamicParameter param=null){
+		return await _sqlConnection.QueryAsync<T>(procName, param, CommandType: CommandType.StordProcedure);
+	}
+	public Task<T> ExecuteNonQueryStoredProcedureAsync(string procName, DynamicParameter param=null){
+		return await _sqlConnection.ExecuteAsync(procName, param, CommandType: CommandType.StordProcedure);
+	}
+}
+
+AppSettings.json
+{
+	"ConnectionString": {
+		"DefaultConnection":  "xyz"
+	},
+	"Authentication": {
+		"OAuth": {
+			"ClientID": "" ...
+		}
+	},
+	"Logging": {
+    		"LogLevel": {
+      			"Default": "Information",
+      			"Microsoft": "Warning",
+      			"Microsoft.Hosting.Lifetime": "Information"
+    	},
+    	"Console": {
+      		"IncludeScopes": true
+    	}
+}
+
+Program.cs
+
+var builder = WebApplication.CreateBuilder(args);
+
+//add logging
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+builder.Logging.AddEventLog();
+
+//routing gateway
+builder.Configuration.AddJsonFile("ocelot.json", optional: false, reloadOnChange: true);
+builder.Services.AddOcelot();
+
+//authentication
+builder.Services.AddAuthentication(options => {
+	option.DefaultAuthenticationScheme = JwtBearerDefaults.AuthenticationScheme,
+	option.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme
+})
+.AddJwtBearer(options => {
+	options.Authority = builder.Configuration["Authentication:OAuth:Authority"],
+	options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+    	{
+        	ValidateIssuer = true,
+        	ValidateAudience = true,
+        	ValidateLifetime = true,
+        	ValidateIssuerSigningKey = true
+    	};
+    	options.Audience = builder.Configuration["Authentication:OAuth:ClientId"];
+});
+
+//DBConnection ORM
+builder.Services.AddSingleton<IDBConnection>(dbConn =>{
+	var config = dbConn.GetRequiredService<IConfiguration>();
+	var connectionString = config.GetConnectionString("DefaultConnection");
+	return new DBConnection(connectionString);
+
+});
+builder.Services.AddSingleton<ORM>();
+
+//adding filter at controller level
+builder.Services.AddControllers(options =>{
+	options.Filters.Add<ExceptionFilter>();
+	options.Filters.Add<ActionFilter>();
+});
+
+//addSwagger
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(option =>{
+	option.SwaggerDoc("v1", new OpenApiInfo 
+    	{ 
+        	Title = "My API", 
+        	Version = "v1",
+        	Description = "A simple example ASP.NET Core Web API"
+    });
+});
+
+var app = builder.Build();
+
+if(app.IsDevelopment()){
+	//adding middleware
+	app.UseDeveloperExceptionPage();
+	
+	//swagger
+	app.UseSwagger();
+	app.UseSwaggerUI(option => {
+		option.SwaggerEndpoint("/swagger/v1/swagger.json", "My API V1");
+        	option.RoutePrefix = string.Empty; // Set Swagger UI at the app's root
+	});
+}
+else{
+	//configure error handling for production
+	app.UseExceptionHandler("/Home/Error");
+
+}
+
+//adding middleware
+app.UseStaticFiles();
+app.UseRouting();
+app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+app.Run();
+
+Controller
+
+[Authorize]
+public class HomeController : ControllerBase{
+	private ILogger<HomeController> _logger;
+	private ORM _orm;
+	public HomeController([Named("DBConnection")] ORM _orm, ILogger<HomeController> logger){
+		_orm=orm;
+		_logger=logger;
+	}
+	
+	[Route("GetHomePageDetails")]
+	public Task<ActionResult<HomeData>> GetHomePageDetails(){
+		_logger.LogInformation("GetHomePageDetails Executed");
+		var result = orm.ExecuteStoredProcedureAsync<HomeData>("sp_get_Details");
+		return OK(result);
+	}
+}
+
+
+
+
+
